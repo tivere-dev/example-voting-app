@@ -1,0 +1,7 @@
+# Keep the build context to what the image needs
+Dockerfile
+.dockerignore
+bin/
+obj/
+.vs/
+*.md
