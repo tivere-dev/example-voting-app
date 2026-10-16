@@ -1,0 +1,10 @@
+# Keep the build context to what the image needs
+Dockerfile
+.dockerignore
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.*
+*.md

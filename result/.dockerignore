@@ -1,1 +1,10 @@
+# Keep the build context to what the image needs
+Dockerfile
+.dockerignore
 node_modules/
+npm-debug.log*
+tests/
+docker-compose.test.yml
+.env
+.env.*
+*.md
