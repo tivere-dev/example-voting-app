@@ -1,0 +1,106 @@
+# The one values file for the Voting App chart.
+#
+# Install example (Minikube, images loaded with `minikube image load`):
+#   helm install voting-app helm/voting-app -n voting-app --create-namespace \
+#     --set appImage.tag=<git commit SHA>
+#
+# The application code looks for its dependencies at the fixed hostnames
+# "redis" and "db", so the Services use those exact names. That means one
+# release per namespace.
+
+# Shared settings for the three images built from this repository.
+appImage:
+  # Empty = images already present on the node (minikube image load / kind load).
+  # For a registry, e.g. "ghcr.io/tivere-dev".
+  registry: ""
+  # Required. Normally the git commit SHA the images were built from.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+vote:
+  replicas: 1
+  image:
+    repository: voting-app-vote
+    # Empty = use appImage.tag. The bad-release demo overrides this one value.
+    tag: ""
+  containerPort: 8080
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      memory: 256Mi
+
+result:
+  replicas: 1
+  image:
+    repository: voting-app-result
+    tag: ""
+  containerPort: 8080
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      memory: 192Mi
+
+worker:
+  replicas: 1
+  image:
+    repository: voting-app-worker
+    tag: ""
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      memory: 192Mi
+
+redis:
+  image:
+    repository: redis
+    # Same pinned image as docker-compose.yml (tag + digest)
+    tag: 8.10.2-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
+    pullPolicy: IfNotPresent
+  # User and group IDs of the "redis" account inside this image
+  runAsUser: 999
+  runAsGroup: 1000
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+postgres:
+  image:
+    repository: postgres
+    # Same pinned image as docker-compose.yml (tag + digest)
+    tag: 15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
+    pullPolicy: IfNotPresent
+  # User and group IDs of the "postgres" account inside this image
+  runAsUser: 70
+  runAsGroup: 70
+  auth:
+    username: postgres
+    # Upstream demo password. The worker and result code currently contain the
+    # same value, so changing it here alone would break them. It is stored in
+    # a Kubernetes Secret rather than written into the Deployment.
+    password: postgres
+  persistence:
+    enabled: true
+    size: 1Gi
+    # Empty = the cluster's default StorageClass
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi

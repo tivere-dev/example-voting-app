@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vote
+  labels:
+    {{- include "voting-app.labels" (dict "root" $ "component" "vote") | nindent 4 }}
+spec:
+  replicas: {{ .Values.vote.replicas }}
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" (dict "root" $ "component" "vote") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never remove a working pod before its replacement is ready. This is
+      # what keeps the app up when a bad release cannot start.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.labels" (dict "root" $ "component" "vote") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "voting-app.podSecurityContext" (dict "uid" 10001 "gid" 10001) | nindent 8 }}
+      containers:
+        - name: vote
+          image: {{ include "voting-app.appImage" (dict "root" $ "image" .Values.vote.image) | quote }}
+          imagePullPolicy: {{ .Values.appImage.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.vote.containerPort }}
+          # Ready = may receive traffic. Live = restart if it stops answering.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.vote.resources | nindent 12 }}
+          securityContext:
+            {{- include "voting-app.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # The root filesystem is read-only, so give Python a writable /tmp
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vote
+  labels:
+    {{- include "voting-app.labels" (dict "root" $ "component" "vote") | nindent 4 }}
+spec:
+  type: {{ .Values.vote.service.type }}
+  selector:
+    {{- include "voting-app.selectorLabels" (dict "root" $ "component" "vote") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.vote.service.port }}
+      targetPort: http

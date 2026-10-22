@@ -1,0 +1,11 @@
+apiVersion: v2
+name: voting-app
+description: Voting App (vote, result, worker, Redis, PostgreSQL) for the DevOps capstone
+type: application
+# Version of the chart itself. Bump it when the templates change.
+version: 0.1.0
+# Version of the application the chart deploys by default.
+appVersion: "capstone-1"
+maintainers:
+  - name: Tivere Madagwa
+home: https://github.com/tivere-dev/example-voting-app

@@ -1,0 +1,8 @@
+# Files Helm should not package with the chart
+.DS_Store
+*.swp
+*.bak
+*.tmp
+*.orig
+.git/
+.vscode/

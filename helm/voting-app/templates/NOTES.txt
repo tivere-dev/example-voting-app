@@ -1,0 +1,14 @@
+Voting App release "{{ .Release.Name }}" (revision {{ .Release.Revision }}) in namespace "{{ .Release.Namespace }}".
+
+Check the rollout:
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/vote deploy/result deploy/worker
+
+Open the pages (each command in its own terminal):
+  kubectl -n {{ .Release.Namespace }} port-forward svc/vote 8082:{{ .Values.vote.service.port }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/result 8081:{{ .Values.result.service.port }}
+  Vote:   http://localhost:8082
+  Result: http://localhost:8081
+
+History and rollback:
+  helm -n {{ .Release.Namespace }} history {{ .Release.Name }}
+  helm -n {{ .Release.Namespace }} rollback {{ .Release.Name }} <REVISION>
