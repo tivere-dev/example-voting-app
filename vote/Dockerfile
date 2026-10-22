@@ -10,9 +10,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /usr/local/app
 
-# Dependencies first: this layer is reused until requirements.txt changes
+# Dependencies first: this layer is reused until requirements.txt changes.
+# pip is removed afterwards: the app never installs packages at runtime, and
+# pip's own bundled copies of certifi, urllib3, msgpack and setuptools were
+# flagged by Trivy (including a CRITICAL in certifi).
 COPY requirements.txt ./
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt && pip uninstall -y pip
 
 # Unprivileged user with a fixed numeric UID, so Kubernetes can verify runAsNonRoot
 RUN groupadd --system --gid 10001 app && \
