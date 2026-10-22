@@ -1,0 +1,138 @@
+# Stage 5d: destroy and recreate the local environment from code
+# Captured: 2026-10-22 10:01 UTC. LOCAL Minikube profile 'capstone' (not AWS EKS).
+# Commit: e5f6023 on branch stage5/helm; script: scripts/local-cluster.sh
+
+## 1. Before: existing cluster
+$ minikube profile list
+┌──────────┬────────┬────────────┬──────────────┬─────────┬─────────┬───────┬────────────────┬────────────────────┐
+│ PROFILE  │ DRIVER │  RUNTIME   │      IP      │ VERSION │ STATUS  │ NODES │ ACTIVE PROFILE │ ACTIVE KUBECONTEXT │
+├──────────┼────────┼────────────┼──────────────┼─────────┼─────────┼───────┼────────────────┼────────────────────┤
+│ capstone │ docker │ containerd │ 192.168.58.2 │ v1.37.0 │ OK      │ 1     │                │                    │
+│ minikube │ docker │ containerd │ 192.168.49.2 │ v1.37.0 │ Stopped │ 1     │ *              │ *                  │
+└──────────┴────────┴────────────┴──────────────┴─────────┴─────────┴───────┴────────────────┴────────────────────┘
+
+$ helm history voting-app
+REVISION	UPDATED                 	STATUS    	CHART           	APP VERSION	DESCRIPTION                                                                                                                    
+1       	Thu Oct 22 10:04:43 2026	superseded	voting-app-0.1.0	capstone-1 	Install complete                                                                                                               
+2       	Thu Oct 22 10:31:41 2026	failed    	voting-app-0.1.0	capstone-1 	Upgrade "voting-app" failed: resource Deployment/voting-app/vote not ready. status: InProgress, message: Pending termination...
+3       	Thu Oct 22 10:33:58 2026	superseded	voting-app-0.1.0	capstone-1 	Rollback to 1                                                                                                                  
+4       	Thu Oct 22 11:00:02 2026	deployed  	voting-app-0.1.0	capstone-1 	Upgrade complete                                                                                                               
+
+$ kubectl get nodes (node creation time identifies this cluster)
+NODE       CREATED                UID
+capstone   2026-10-22T09:02:59Z   3c202937-6ac4-494c-8a22-5540ab41018a
+
+$ psql: SELECT count(*) FROM votes
+5
+
+## 2. Destroy
+$ scripts/local-cluster.sh down --yes
+This deletes the Minikube profile 'capstone': its cluster, the 'voting-app'
+release and every vote stored in it. Other Minikube profiles and the
+Docker images on this machine are not touched.
+* Deleting "capstone" in docker ...
+* Deleting container "capstone" ...
+* Removing ~/.minikube/machines/capstone ...
+* Removed all traces of the "capstone" cluster.
+exit code: 0  (after 11s)
+
+$ minikube profile list   (capstone should be gone; minikube untouched)
+┌──────────┬────────┬────────────┬──────────────┬─────────┬─────────┬───────┬────────────────┬────────────────────┐
+│ PROFILE  │ DRIVER │  RUNTIME   │      IP      │ VERSION │ STATUS  │ NODES │ ACTIVE PROFILE │ ACTIVE KUBECONTEXT │
+├──────────┼────────┼────────────┼──────────────┼─────────┼─────────┼───────┼────────────────┼────────────────────┤
+│ minikube │ docker │ containerd │ 192.168.49.2 │ v1.37.0 │ Stopped │ 1     │ *              │ *                  │
+└──────────┴────────┴────────────┴──────────────┴─────────┴─────────┴───────┴────────────────┴────────────────────┘
+
+$ kubectl config get-contexts -o name
+minikube
+
+## 3. Recreate from code
+$ scripts/local-cluster.sh up
+==> 1/5 Start Minikube profile 'capstone' (Kubernetes v1.37.0, 2 CPUs, 3072 MB)
+* [capstone] minikube v1.39.0 on Darwin 13.7.8
+* Using the docker driver based on user configuration
+* Using Docker Desktop driver with root privileges
+* Starting "capstone" primary control-plane node in "capstone" cluster
+* Pulling base image v0.0.51 ...
+* Preparing Kubernetes v1.37.0 on containerd 2.3.4 ...
+* Configuring CNI (Container Networking Interface) ...
+* Verifying Kubernetes components...
+  - Using image gcr.io/k8s-minikube/storage-provisioner:v5
+* Enabled addons: storage-provisioner, default-storageclass
+! /usr/local/bin/kubectl is version 1.34.1, which may have incompatibilities with Kubernetes 1.37.0.
+  - Want kubectl v1.37.0? Try 'minikube kubectl -- get pods -A'
+* To connect to this cluster, use:  --context=capstone
+==> 2/5 Build images tagged 'e5f6023'
+    built voting-app-vote:e5f6023
+    built voting-app-result:e5f6023
+    built voting-app-worker:e5f6023
+==> 3/5 Load images into Minikube (no registry, nothing is published)
+    loaded voting-app-vote:e5f6023
+    loaded voting-app-result:e5f6023
+    loaded voting-app-worker:e5f6023
+==> 4/5 Install or upgrade Helm release 'voting-app'
+Release "voting-app" does not exist. Installing it now.
+NAME: voting-app
+LAST DEPLOYED: Thu Oct 22 11:03:38 2026
+NAMESPACE: voting-app
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+TEST SUITE: None
+==> 5/5 Status
+--- Minikube profile 'capstone'
+capstone
+type: Control Plane
+host: Running
+kubelet: Running
+apiserver: Running
+kubeconfig: Configured
+--- Helm history
+REVISION	UPDATED                 	STATUS  	CHART           	APP VERSION	DESCRIPTION     
+1       	Thu Oct 22 11:03:38 2026	deployed	voting-app-0.1.0	capstone-1 	Install complete
+--- Pods
+POD                       READY   RESTARTS   IMAGE
+db-684865655-nn6rc        true    0          postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
+redis-558c4db95b-cjqtf    true    0          redis:8.10.2-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
+result-595945fcdd-mpsc2   true    0          voting-app-result:e5f6023
+vote-56cdcdd67-kcsxn      true    0          voting-app-vote:e5f6023
+worker-7998b87cbc-vfdv9   true    0          voting-app-worker:e5f6023
+--- To open the app (each in its own terminal):
+    minikube -p capstone kubectl -- --context capstone -n voting-app port-forward svc/vote 8082:8080
+    minikube -p capstone kubectl -- --context capstone -n voting-app port-forward svc/result 8081:8080
+exit code: 0  (after 157s)
+
+## 4. Verify this is a new cluster and the app works
+$ kubectl get nodes (compare with section 1)
+NODE       CREATED                UID
+capstone   2026-10-22T10:02:42Z   dddfe14f-128a-4c6c-bcb1-8696b25dab6e
+
+$ psql: SELECT count(*) FROM votes   (fresh database, before the smoke test)
+0
+
+$ scripts/smoke-test.sh   (through kubectl port-forward 8082/8081)
+1. vote page responds
+2. result page responds
+3. cast vote 'a' as smoke-1792663484-16121
+4. wait up to 60s for the worker to store it
+PASS: vote stored in PostgreSQL
+exit code: 0
+
+$ psql: SELECT count(*) FROM votes   (after the smoke test)
+1
+
+## Summary of what the output above shows
+- Section 1: an existing cluster (node UID 3c202937..., created 09:02:59 UTC) with
+  Helm release revision 4 and 5 votes.
+- Section 2: `down --yes` deleted only the "capstone" profile in 11 s. The
+  separate "minikube" profile is still listed and was not started or changed.
+- Section 3: `up` recreated everything from the repository in 157 s: Minikube
+  profile, images built from commit e5f6023, images loaded, and a fresh Helm
+  install (revision 1) with all five pods ready.
+- Section 4: a new node (UID dddfe14f..., created 10:02:42 UTC) and an empty
+  database, then a passing smoke test. Old votes are gone because the whole
+  cluster, including its volume, was deleted. This is expected.
+
+Limitation: this demonstrates rebuilding a LOCAL Minikube environment from
+code. It does not demonstrate the brief's AWS EKS cluster in the default VPC;
+terraform/ has never been applied.
