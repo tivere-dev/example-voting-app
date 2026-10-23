@@ -23,7 +23,7 @@ as verified.
 | 1. Run locally | Docker Compose, cast a vote, see it counted | Verified on macOS 13 (Intel), Docker Desktop 28.5 |
 | 2. Containerize safely | Pinned base images, non-root users, `.dockerignore`, health checks | Verified locally and in CI |
 | 3. Terraform | EKS cluster in the default VPC | Code in [terraform/](terraform/). `fmt` and `validate` pass in CI. **Never applied: no AWS cluster exists.** |
-| 4. GitHub Actions | Tests, Trivy scan, build, deploy test, push tagged with the commit SHA | Pipeline passes on pull requests ([run 39764140784](https://github.com/tivere-dev/example-voting-app/actions/runs/39764140784)). **The publish job has not run yet**: it only runs on a push to `main`. |
+| 4. GitHub Actions | Tests, Trivy scan, build, deploy test, push tagged with the commit SHA | Verified. The full pipeline, including `publish`, passed on the push to `main` ([run 39977351502](https://github.com/tivere-dev/example-voting-app/actions/runs/39977351502)). Three images are on GHCR, tagged with commit `6f25524b25523a2f8135f2baa5d403630c864b58` (see [Published images](#published-images)). |
 | 5. Helm | One chart, one values file, bad release, `helm rollback` | Verified on **local Minikube** (evidence in [docs/evidence/](docs/evidence/)) and on a temporary kind cluster in CI |
 
 ## Architecture
@@ -173,7 +173,7 @@ The gate caught two real problems on the first run, which were fixed:
 | vote | certifi 2026.6.17, CRITICAL (GHSA-6q48-6c7w-9gw2), plus 3 HIGH, all bundled inside pip | Remove pip from the final image |
 | result | proxy-addr 2.0.7, CRITICAL (CVE-2026-90711), plus HIGH findings in express, body-parser, path-to-regexp, engine.io, socket.io-parser and ws | Refresh `package-lock.json` within the existing `package.json` ranges |
 
-Latest results ([run 39764140784](https://github.com/tivere-dev/example-voting-app/actions/runs/39764140784)):
+Latest results ([run 39977351502](https://github.com/tivere-dev/example-voting-app/actions/runs/39977351502), the push to `main`; the same as the last pull-request run):
 
 | Image | Gate | Remaining report findings |
 |---|---|---|
@@ -194,8 +194,38 @@ CI evidence:
 - [Run 39747352711](https://github.com/tivere-dev/example-voting-app/actions/runs/39747352711): the first run, where the gate failed vote and result
 - [Run 39748720764](https://github.com/tivere-dev/example-voting-app/actions/runs/39748720764): all green after the fixes
 - [Run 39764140784](https://github.com/tivere-dev/example-voting-app/actions/runs/39764140784): all green including `deploy-kind`
+- [Run 39977351502](https://github.com/tivere-dev/example-voting-app/actions/runs/39977351502): the push to `main` after merging pull request #2. Every job passed. On
+  the first attempt, `publish` failed for result only: GHCR answered
+  `unknown blob` after nine of ten layers had uploaded. Re-running only that
+  job (attempt 2) pushed it with no other changes, and the run is green.
 
-All three are pull-request runs, so `publish` was skipped.
+The first three are pull-request runs, so `publish` was skipped. The fourth
+ran `publish`.
+
+### Published images
+
+Each push to `main` publishes the three scanned images to the GitHub Container
+Registry, tagged with the full commit SHA. The verified images come from merge
+commit `6f25524b25523a2f8135f2baa5d403630c864b58`:
+
+| Package | Image | Digest |
+|---|---|---|
+| [voting-app-vote](https://github.com/tivere-dev/example-voting-app/pkgs/container/voting-app-vote) | `ghcr.io/tivere-dev/voting-app-vote:6f25524b25523a2f8135f2baa5d403630c864b58` | `sha256:9288fe8a172f4c2703f1cff58387bcfc0ef51e7383f34e1730a11f210fce347c` |
+| [voting-app-result](https://github.com/tivere-dev/example-voting-app/pkgs/container/voting-app-result) | `ghcr.io/tivere-dev/voting-app-result:6f25524b25523a2f8135f2baa5d403630c864b58` | `sha256:1081ba9245a7d3d30c2fe952bb31c336240e28359647641ab2a722658e270fce` |
+| [voting-app-worker](https://github.com/tivere-dev/example-voting-app/pkgs/container/voting-app-worker) | `ghcr.io/tivere-dev/voting-app-worker:6f25524b25523a2f8135f2baa5d403630c864b58` | `sha256:749c0948d08d4b00497a16410f2052d4b1913c4b7ab9d199b6fcae26e5514e96` |
+
+The packages are **public** and can be pulled without logging in:
+
+```bash
+docker pull ghcr.io/tivere-dev/voting-app-vote:6f25524b25523a2f8135f2baa5d403630c864b58
+```
+
+How this was checked: requesting each image's manifest from `ghcr.io` with an
+anonymous token (no GitHub login) returned HTTP 200 and the digests above,
+which match the `docker push` output in the CI log. Each image's config blob
+also downloaded anonymously (HTTP 200). The package pages also
+open without signing in. The packages took the visibility of this public
+repository. Visibility was never changed by hand.
 
 ## Kubernetes and Helm (Stage 5)
 
@@ -320,8 +350,8 @@ the plan of record.
 | Terraform code for a Kubernetes cluster | Yes, as code | [terraform/](terraform/); `fmt` and `validate` pass in CI |
 | Cluster created **in the default VPC**, destroyed and recreated | **No** | Needs an AWS account. Not performed. |
 | "The environment rebuilds from code" | Partly | Minikube deleted and rebuilt with one script ([evidence](docs/evidence/stage5d-rebuild-from-code.txt)). Local substitute, not AWS. |
-| Each push runs tests, a Trivy scan and a build | Yes | CI runs on pull requests (links above) |
-| Images pushed tagged with the commit SHA | **Configured, not yet run** | `publish` runs only on a push to `main`, which has not happened yet |
+| Each push runs tests, a Trivy scan and a build | Yes | On pull requests and on the push to `main` ([CI evidence](#pipeline-security)) |
+| Images pushed tagged with the commit SHA | Yes | Three public GHCR images tagged `6f25524b25523a2f8135f2baa5d403630c864b58` ([Published images](#published-images)) |
 | "One push builds, scans and **deploys**" | Partly | Every run deploys the chart to a temporary kind cluster and tests it. That cluster is deleted when the job ends; there is no persistent deployment. |
 | One Helm chart, one values file | Yes | [helm/voting-app/](helm/voting-app/) |
 | Bad release on purpose, then `helm rollback` | Yes | On Minikube ([evidence](docs/evidence/stage5c-bad-release-rollback.txt)); can be repeated live |
@@ -334,9 +364,13 @@ the plan of record.
 - **No AWS cluster has ever been created.** The EKS Terraform has not been
   planned or applied, so the default-VPC and destroy/recreate requirements
   are only met by the local substitute.
-- **Images have not been published yet.** The first GHCR push happens when a
-  change is merged to `main`. New GHCR packages under a personal account are
-  private by default.
+- **The published images are public.** Anyone can pull them. According to
+  GitHub's documentation, a public package cannot be made private again; it
+  can only be deleted. Every push to `main`, including documentation-only
+  changes, runs the pipeline and publishes a new set of images tagged with
+  that commit.
+- **The kind deployment in CI is temporary.** The images are published to a
+  registry, but nothing keeps running anywhere after the job ends.
 - **Database password:** PostgreSQL uses upstream's demo login
   (`postgres`/`postgres`). It is stored in a Kubernetes Secret, but the worker
   and result code contain the same value, so it cannot be changed in the
