@@ -60,7 +60,7 @@ flowchart TB
 | Check | Result | Notes |
 |---|---|---|
 | `terraform fmt -check -recursive` | Passed (21 Oct 2026, Terraform 1.17.0) | Checks layout and HCL syntax. Needs no download. |
-| `terraform validate` | **Not run locally** | Needs the AWS provider plugin (191 MB). Planned to run in GitHub Actions. |
+| `terraform validate` | Passed in GitHub Actions ([CI run 39764140784](https://github.com/tivere-dev/example-voting-app/actions/runs/39764140784), 22 Oct 2026) | Runs `terraform init -backend=false` on the CI runner to download the AWS provider. No AWS credentials are used. Not run locally, to save disk space. |
 | `terraform plan` | **Not possible** | Needs AWS credentials and reads a real account. |
 | `apply`, `destroy`, recreate | **Not performed** | Would create billable resources. |
 
