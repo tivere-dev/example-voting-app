@@ -1,0 +1,16 @@
+# Copy to terraform.tfvars (ignored by Git) and fill in your own values.
+# 203.0.113.10 is a documentation-only example address. Replace it with your
+# public IP followed by /32 (one address).
+
+region             = "eu-west-1"
+cluster_name       = "voting-app"
+kubernetes_version = "1.36"
+api_allowed_cidrs  = ["203.0.113.10/32"]
+
+# Only needed in us-east-1, where EKS cannot use zone use1-az3:
+# excluded_az_ids = ["use1-az3"]
+
+node_instance_types = ["t3.medium"]
+node_desired_size   = 2
+node_min_size       = 1
+node_max_size       = 3

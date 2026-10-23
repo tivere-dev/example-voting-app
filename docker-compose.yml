@@ -3,39 +3,29 @@
 # docker-compose v1.27+ required
 
 services:
+  # vote and result run the same hardened images that CI builds. Their health
+  # checks are defined in each Dockerfile, so they are not repeated here.
   vote:
-    build: 
-      context: ./vote
-      target: dev
+    build: ./vote
     depends_on:
       redis:
         condition: service_healthy
-    healthcheck: 
-      test: ["CMD", "curl", "-f", "http://localhost"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    volumes:
-     - ./vote:/usr/local/app
     ports:
-      - "8080:80"
+      # host:container. Host 8080 is taken on the dev machine, so the default
+      # is 8082. Override with VOTE_PORT=<port> in the shell or a .env file.
+      # The app listens on 8080 inside the container (non-root friendly).
+      - "${VOTE_PORT:-8082}:8080"
     networks:
       - front-tier
       - back-tier
 
   result:
     build: ./result
-    # use nodemon rather than node for local dev
-    entrypoint: nodemon --inspect=0.0.0.0 server.js
     depends_on:
       db:
-        condition: service_healthy 
-    volumes:
-      - ./result:/usr/local/app
+        condition: service_healthy
     ports:
-      - "8081:80"
-      - "127.0.0.1:9229:9229"
+      - "${RESULT_PORT:-8081}:8080"
     networks:
       - front-tier
       - back-tier
@@ -52,7 +42,7 @@ services:
       - back-tier
 
   redis:
-    image: redis:alpine
+    image: redis:8.10.2-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
     volumes:
       - "./healthchecks:/healthchecks"
     healthcheck:
@@ -62,7 +52,7 @@ services:
       - back-tier
 
   db:
-    image: postgres:15-alpine
+    image: postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
     environment:
       POSTGRES_USER: "postgres"
       POSTGRES_PASSWORD: "postgres"

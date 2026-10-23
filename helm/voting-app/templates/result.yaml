@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: result
+  labels:
+    {{- include "voting-app.labels" (dict "root" $ "component" "result") | nindent 4 }}
+spec:
+  replicas: {{ .Values.result.replicas }}
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" (dict "root" $ "component" "result") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.labels" (dict "root" $ "component" "result") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "voting-app.podSecurityContext" (dict "uid" 1000 "gid" 1000) | nindent 8 }}
+      containers:
+        - name: result
+          image: {{ include "voting-app.appImage" (dict "root" $ "image" .Values.result.image) | quote }}
+          imagePullPolicy: {{ .Values.appImage.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.result.containerPort }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.result.resources | nindent 12 }}
+          securityContext:
+            {{- include "voting-app.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: result
+  labels:
+    {{- include "voting-app.labels" (dict "root" $ "component" "result") | nindent 4 }}
+spec:
+  type: {{ .Values.result.service.type }}
+  selector:
+    {{- include "voting-app.selectorLabels" (dict "root" $ "component" "result") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.result.service.port }}
+      targetPort: http

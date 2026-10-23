@@ -1,0 +1,28 @@
+# Provider downloads and module cache created by `terraform init`
+.terraform/
+
+# State can contain sensitive values and must never be committed
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Saved plans can contain sensitive values
+*.tfplan
+tfplan
+plan.out
+
+# Real variable files may contain account-specific values; keep the example
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+
+# Local overrides and crash logs
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+crash.log
+crash.*.log
+
+# Note: .terraform.lock.hcl is NOT ignored. It pins provider versions and
+# checksums, and should be committed once `terraform init` has created it.

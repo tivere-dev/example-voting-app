@@ -1,32 +1,36 @@
-# base defines a base stage that uses the official python runtime base image
-FROM python:3.11-slim AS base
+# Base image pinned by version tag (readable) and digest (immutable).
+FROM python:3.13.16-slim-trixie@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f
 
-# Add curl for healthcheck
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
-    rm -rf /var/lib/apt/lists/*
+# Don't write .pyc files, flush logs straight to stdout, keep pip quiet and cache-free
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_ROOT_USER_ACTION=ignore
 
-# Set the application directory
 WORKDIR /usr/local/app
 
-# Install our requirements.txt
-COPY requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Dependencies first: this layer is reused until requirements.txt changes.
+# pip is removed afterwards: the app never installs packages at runtime, and
+# pip's own bundled copies of certifi, urllib3, msgpack and setuptools were
+# flagged by Trivy (including a CRITICAL in certifi).
+COPY requirements.txt ./
+RUN pip install -r requirements.txt && pip uninstall -y pip
 
-# dev defines a stage for development, where it'll watch for filesystem changes
-FROM base AS dev
-RUN pip install watchdog
-ENV FLASK_ENV=development
-CMD ["python", "app.py"]
+# Unprivileged user with a fixed numeric UID, so Kubernetes can verify runAsNonRoot
+RUN groupadd --system --gid 10001 app && \
+    useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 
-# final defines the stage that will bundle the application for production
-FROM base AS final
-
-# Copy our code from the current folder to the working directory inside the container
+# Code stays owned by root, so the app user can read it but not change it
 COPY . .
 
-# Make port 80 available for links and/or publish
-EXPOSE 80
+USER 10001
 
-# Define our command to be run when launching the container
-CMD ["gunicorn", "app:app", "-b", "0.0.0.0:80", "--log-file", "-", "--access-logfile", "-", "--workers", "4", "--keep-alive", "0"]
+# Ports below 1024 need root on many Kubernetes nodes, so listen on 8080
+EXPOSE 8080
+
+# Python's standard library does the check, so curl is not needed in the image
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/', timeout=4)"]
+
+CMD ["gunicorn", "app:app", "-b", "0.0.0.0:8080", "--log-file", "-", "--access-logfile", "-", "--workers", "4", "--keep-alive", "0", "--worker-tmp-dir", "/dev/shm", "--no-control-socket"]

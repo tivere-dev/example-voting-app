@@ -1,0 +1,131 @@
+# Stage 5c: deliberate bad release and helm rollback on local Minikube (profile: capstone)
+# Captured: 2026-10-22 09:31 UTC. This is a LOCAL Minikube cluster, not AWS EKS.
+
+## 1. Before: revision 1 is healthy
+$ helm history voting-app
+REVISION	UPDATED                 	STATUS  	CHART           	APP VERSION	DESCRIPTION     
+1       	Thu Oct 22 10:04:43 2026	deployed	voting-app-0.1.0	capstone-1 	Install complete
+
+$ kubectl get pods -l app.kubernetes.io/component=vote -o wide
+POD                     READY   STATUS    IMAGE                     IP
+vote-556bbcb9d6-k7g5d   true    Running   voting-app-vote:3d408b5   10.244.0.7
+
+$ curl http://localhost:8082/  (container ID shown on the vote page)
+HTTP 200
+container ID vote-556bbcb9d6-k7g5d
+
+## 2. Bad release: point vote at an image tag that does not exist
+$ helm upgrade voting-app helm/voting-app --reuse-values --set vote.image.tag=does-not-exist --wait --timeout 90s
+level=WARN msg="upgrade failed" name=voting-app error="resource Deployment/voting-app/vote not ready. status: InProgress, message: Pending termination: 1\ncontext deadline exceeded"
+Error: UPGRADE FAILED: resource Deployment/voting-app/vote not ready. status: InProgress, message: Pending termination: 1
+context deadline exceeded
+exit code: 1  (after 91s)
+
+## 3. During and after the failed upgrade
+$ helm history voting-app
+REVISION	UPDATED                 	STATUS  	CHART           	APP VERSION	DESCRIPTION                                                                                                                    
+1       	Thu Oct 22 10:04:43 2026	deployed	voting-app-0.1.0	capstone-1 	Install complete                                                                                                               
+2       	Thu Oct 22 10:31:41 2026	failed  	voting-app-0.1.0	capstone-1 	Upgrade "voting-app" failed: resource Deployment/voting-app/vote not ready. status: InProgress, message: Pending termination...
+
+$ kubectl get pods -l app.kubernetes.io/component=vote
+POD                     READY   WAITING        IMAGE                            IP
+vote-556bbcb9d6-k7g5d   true    <none>         voting-app-vote:3d408b5          10.244.0.7
+vote-6c84fdcf67-c2x5w   false   ErrImagePull   voting-app-vote:does-not-exist   10.244.0.8
+
+$ kubectl get endpointslice -l kubernetes.io/service-name=vote  (which pods the vote Service sends traffic to)
+vote-556bbcb9d6-k7g5d  ready=true
+vote-6c84fdcf67-c2x5w  ready=false
+
+$ kubectl describe pod <new vote pod> | events (why it is stuck)
+BackOff     Back-off pulling image "voting-app-vote:does-not-exist"
+Failed      Error: ErrImagePull
+Failed      Error: ImagePullBackOff
+Failed      Failed to pull image "voting-app-vote:does-not-exist": failed to pull and unpack image "docker.io/library/voting-app-vote:does-not-exist": failed to resolve reference "docker.io/library/vo
+REASON      MESSAGE
+
+## 4. Availability during the bad release (checked every 3 s from before the upgrade started until it failed)
+09:31:42  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:31:45  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:31:48  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:31:52  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:31:55  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:31:59  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:02  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:06  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:09  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:12  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:16  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:19  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:22  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:26  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:29  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:32  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:36  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:39  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:42  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:46  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:49  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:52  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:56  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:32:59  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:33:03  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:33:06  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:33:09  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:33:13  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:33:16  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:33:19  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:33:23  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:33:26  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:33:29  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+09:33:33  port-forward=200  in-cluster-via-Service=200 vote-556bbcb9d6-k7g5d
+summary: 34/34 port-forward checks HTTP 200; 34/34 in-cluster Service checks HTTP 200
+
+## 5. Roll back to the last known-good revision
+$ helm rollback voting-app 1 --wait --timeout 3m
+Rollback was a success! Happy Helming!
+exit code: 0  (after 1s)
+
+$ helm history voting-app
+REVISION	UPDATED                 	STATUS    	CHART           	APP VERSION	DESCRIPTION                                                                                                                    
+1       	Thu Oct 22 10:04:43 2026	superseded	voting-app-0.1.0	capstone-1 	Install complete                                                                                                               
+2       	Thu Oct 22 10:31:41 2026	failed    	voting-app-0.1.0	capstone-1 	Upgrade "voting-app" failed: resource Deployment/voting-app/vote not ready. status: InProgress, message: Pending termination...
+3       	Thu Oct 22 10:33:58 2026	deployed  	voting-app-0.1.0	capstone-1 	Rollback to 1                                                                                                                  
+
+$ helm status voting-app (first lines)
+NAME: voting-app
+LAST DEPLOYED: Thu Oct 22 10:33:58 2026
+NAMESPACE: voting-app
+STATUS: deployed
+REVISION: 3
+DESCRIPTION: Rollback to 1
+
+$ kubectl get pods -l app.kubernetes.io/component=vote
+POD                     READY   IMAGE
+vote-556bbcb9d6-k7g5d   true    voting-app-vote:3d408b5
+
+$ kubectl get pods  (whole release)
+NAME                     READY   STATUS    RESTARTS   AGE
+db-684865655-kbvxs       1/1     Running   0          29m
+redis-558c4db95b-4pw56   1/1     Running   0          29m
+result-c6b469479-6wm86   1/1     Running   0          29m
+vote-556bbcb9d6-k7g5d    1/1     Running   0          29m
+worker-794b9fc4d-zbc54   1/1     Running   0          29m
+
+## 6. Smoke test after rollback (through port-forward 8082/8081)
+1. vote page responds
+2. result page responds
+3. cast vote 'a' as smoke-1792661644-28760
+4. wait up to 60s for the worker to store it
+PASS: vote stored in PostgreSQL
+exit code: 0
+
+## Summary of what the output above shows
+- Revision 1 (install) was healthy.
+- Revision 2 changed only vote.image.tag to "does-not-exist". The new vote pod
+  could not pull its image (ErrImagePull / ImagePullBackOff), so it never became
+  ready. Helm waited 90 s (--wait) and marked revision 2 "failed" (exit code 1).
+- Because the vote Deployment uses maxUnavailable: 0, the old vote pod was never
+  removed. The vote Service kept routing only to the ready old pod, and every
+  availability check during the bad release returned HTTP 200 (section 4).
+- `helm rollback voting-app 1` created revision 3 ("Rollback to 1"). The stuck
+  pod was removed, the original pod kept serving, and the smoke test passed.

@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # The vote app and worker connect to the hostname "redis"
+  name: redis
+  labels:
+    {{- include "voting-app.labels" (dict "root" $ "component" "redis") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" (dict "root" $ "component" "redis") | nindent 6 }}
+  strategy:
+    # One Redis at a time: the vote queue lives in this pod's memory
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.labels" (dict "root" $ "component" "redis") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "voting-app.podSecurityContext" (dict "uid" .Values.redis.runAsUser "gid" .Values.redis.runAsGroup "fsGroup" .Values.redis.runAsGroup) | nindent 8 }}
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          securityContext:
+            {{- include "voting-app.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            # Redis's working directory. The queue is temporary, so an
+            # emptyDir (deleted with the pod) is enough.
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    {{- include "voting-app.labels" (dict "root" $ "component" "redis") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "voting-app.selectorLabels" (dict "root" $ "component" "redis") | nindent 4 }}
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis

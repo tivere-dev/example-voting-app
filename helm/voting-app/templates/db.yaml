@@ -1,0 +1,126 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-credentials
+  labels:
+    {{- include "voting-app.labels" (dict "root" $ "component" "db") | nindent 4 }}
+type: Opaque
+stringData:
+  username: {{ .Values.postgres.auth.username | quote }}
+  password: {{ .Values.postgres.auth.password | quote }}
+{{- if .Values.postgres.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-data
+  labels:
+    {{- include "voting-app.labels" (dict "root" $ "component" "db") | nindent 4 }}
+  annotations:
+    # Keep the votes if the release is uninstalled; delete the PVC by hand.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.postgres.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.persistence.size }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # The worker and result app connect to the hostname "db"
+  name: db
+  labels:
+    {{- include "voting-app.labels" (dict "root" $ "component" "db") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" (dict "root" $ "component" "db") | nindent 6 }}
+  strategy:
+    # The data volume can be attached to one pod at a time
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.labels" (dict "root" $ "component" "db") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "voting-app.podSecurityContext" (dict "uid" .Values.postgres.runAsUser "gid" .Values.postgres.runAsGroup "fsGroup" .Values.postgres.runAsGroup) | nindent 8 }}
+      containers:
+        - name: db
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: password
+            # A sub-folder of the volume, so PostgreSQL creates it with the
+            # owner and permissions it requires
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\""]
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\""]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+          securityContext:
+            {{- include "voting-app.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            # Writable places PostgreSQL needs with a read-only root filesystem
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          {{- if .Values.postgres.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: db-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  labels:
+    {{- include "voting-app.labels" (dict "root" $ "component" "db") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "voting-app.selectorLabels" (dict "root" $ "component" "db") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

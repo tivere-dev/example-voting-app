@@ -1,0 +1,70 @@
+# Stage 5b: Helm install on local Minikube (profile: capstone)
+# Captured: 2026-10-22 09:07 UTC on macOS 13.7.8 (Intel), Docker Desktop 28.5.1
+# This is a LOCAL Minikube cluster, not AWS EKS.
+
+$ minikube profile list
+┌──────────┬────────┬────────────┬──────────────┬─────────┬─────────┬───────┬────────────────┬────────────────────┐
+│ PROFILE  │ DRIVER │  RUNTIME   │      IP      │ VERSION │ STATUS  │ NODES │ ACTIVE PROFILE │ ACTIVE KUBECONTEXT │
+├──────────┼────────┼────────────┼──────────────┼─────────┼─────────┼───────┼────────────────┼────────────────────┤
+│ capstone │ docker │ containerd │ 192.168.58.2 │ v1.37.0 │ OK      │ 1     │                │                    │
+│ minikube │ docker │ containerd │ 192.168.49.2 │ v1.37.0 │ Stopped │ 1     │ *              │ *                  │
+└──────────┴────────┴────────────┴──────────────┴─────────┴─────────┴───────┴────────────────┴────────────────────┘
+
+$ helm list -n voting-app --kube-context capstone
+NAME      	NAMESPACE 	REVISION	UPDATED                             	STATUS  	CHART           	APP VERSION
+voting-app	voting-app	1       	2026-10-22 10:04:43.220498 +0100 WAT	deployed	voting-app-0.1.0	capstone-1 
+
+$ helm history voting-app -n voting-app --kube-context capstone
+REVISION	UPDATED                 	STATUS  	CHART           	APP VERSION	DESCRIPTION     
+1       	Thu Oct 22 10:04:43 2026	deployed	voting-app-0.1.0	capstone-1 	Install complete
+
+$ kubectl get deploy,pods,svc,pvc -n voting-app
+NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/db       1/1     1            1           2m21s
+deployment.apps/redis    1/1     1            1           2m21s
+deployment.apps/result   1/1     1            1           2m21s
+deployment.apps/vote     1/1     1            1           2m21s
+deployment.apps/worker   1/1     1            1           2m21s
+
+NAME                         READY   STATUS    RESTARTS   AGE
+pod/db-684865655-kbvxs       1/1     Running   0          2m21s
+pod/redis-558c4db95b-4pw56   1/1     Running   0          2m21s
+pod/result-c6b469479-6wm86   1/1     Running   0          2m21s
+pod/vote-556bbcb9d6-k7g5d    1/1     Running   0          2m20s
+pod/worker-794b9fc4d-zbc54   1/1     Running   0          2m21s
+
+NAME             TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE
+service/db       ClusterIP   10.99.219.43     <none>        5432/TCP   2m21s
+service/redis    ClusterIP   10.102.76.62     <none>        6379/TCP   2m21s
+service/result   ClusterIP   10.102.201.227   <none>        8080/TCP   2m21s
+service/vote     ClusterIP   10.110.31.161    <none>        8080/TCP   2m21s
+
+NAME                            STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+persistentvolumeclaim/db-data   Bound    pvc-283114a5-aa08-494f-881b-78a9266e21fe   1Gi        RWO            standard       <unset>                 2m21s
+
+$ kubectl exec deploy/<name> -- id   (who each container runs as)
+vote    uid=10001(app) gid=10001(app) groups=10001(app)
+result  uid=1000(node) gid=1000(node) groups=1000(node)
+redis   uid=999(redis) gid=1000(redis) groups=1000(redis)
+db      uid=70(postgres) gid=70(postgres) groups=70(postgres)
+worker  runAsUser=1654 (chiseled image has no shell)
+
+$ kubectl get pods (images)
+POD                      IMAGE
+db-684865655-kbvxs       postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
+redis-558c4db95b-4pw56   redis:8.10.2-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
+result-c6b469479-6wm86   voting-app-result:3d408b5
+vote-556bbcb9d6-k7g5d    voting-app-vote:3d408b5
+worker-794b9fc4d-zbc54   voting-app-worker:3d408b5
+
+$ scripts/smoke-test.sh  (through kubectl port-forward 8082/8081; PSQL = kubectl exec deploy/db -- psql)
+1. vote page responds
+2. result page responds
+3. cast vote 'a' as smoke-1792660025-7459
+4. wait up to 60s for the worker to store it
+PASS: vote stored in PostgreSQL
+exit code: 0
+
+$ kubectl exec deploy/db -- psql -U postgres -tAc "SELECT vote, count(*) FROM votes GROUP BY vote"
+a|2
+b|1
